@@ -1,0 +1,14 @@
+!pip install pillow
+import os
+from PIL import Image
+path1 = '/content/drive/MyDrive/kart/'    
+path2 = '/content/drive/MyDrive/kart/800600/'  
+x=0
+listing = os.listdir(path1)    
+for file in listing:
+  im = Image.open(path1 + file).convert('RGB')
+  x=x+1
+  print(file)
+  print(x)
+  im = im.resize((800, 600), Image.ANTIALIAS)                   
+  im.save(path2 + file, "JPEG")

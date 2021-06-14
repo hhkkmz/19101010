@@ -1,0 +1,519 @@
+# install dependencies: 
+import streamlit as st
+import torch, torchvision
+print(torch._version_, torch.cuda.is_available())
+st.title("""
+         Karbonhidrat tahmin uygulaması
+         """)
+# opencv is pre-installed on colab
+# install detectron2: (Colab has CUDA 10.1 + torch 1.7)
+# See https://detectron2.readthedocs.io/tutorials/install.html for instructions
+import torch
+assert torch._version_.startswith("1.7")
+
+# exit(0)  # After installation, you need to "restart runtime" in Colab. This line can also restart runtime
+
+
+
+
+# Add this file to your Google Drive Account https://drive.google.com/drive/folders/1eFwH3sZd1mw_6nSyL3VHwMohqCUM89U-?usp=sharing
+
+
+import detectron2
+from detectron2.utils.logger import setup_logger
+setup_logger()
+
+# import some common libraries
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+
+# import some common detectron2 utilities
+from detectron2 import model_zoo
+from detectron2.engine import DefaultPredictor
+from detectron2.config import get_cfg
+from detectron2.utils.visualizer import Visualizer
+from detectron2.data import MetadataCatalog
+
+import os
+import numpy as np
+import json
+from detectron2.structures import BoxMode
+
+def get_food_dicts(directory):
+    classes = ['baklava','barbunya','cipura','etsote','pilav','karniyarik','pirinc','manti','kurufasulye','menemen','mercimek','nohut','tavuksote','trilece','kart','yaprak','fasulye']
+    dataset_dicts = []
+    for filename in [file for file in os.listdir(directory) if file.endswith('.json')]:
+        json_file = os.path.join(directory, filename)
+        with open(json_file) as f:
+            img_anns = json.load(f)
+
+        record = {}
+        
+        filename = os.path.join(directory, img_anns["imagePath"])
+        
+        record["file_name"] = filename
+        record["height"] = 600
+        record["width"] = 800
+      
+        annos = img_anns["shapes"]
+        objs = []
+        for anno in annos:
+            px = [a[0] for a in anno['points']]
+            py = [a[1] for a in anno['points']]
+            poly = [(x, y) for x, y in zip(px, py)]
+            poly = [p for x in poly for p in x]
+
+            obj = {
+                "bbox": [np.min(px), np.min(py), np.max(px), np.max(py)],
+                "bbox_mode": BoxMode.XYXY_ABS,
+                "segmentation": [poly],
+                "category_id": classes.index(anno['label']),
+                "iscrowd": 0
+            }
+            objs.append(obj)
+        record["annotations"] = objs
+        dataset_dicts.append(record)
+    return dataset_dicts
+
+from detectron2.data import DatasetCatalog, MetadataCatalog
+for d in ["train", "test"]:
+    try:
+      DatasetCatalog.register("food_" + d, lambda d=d: get_food_dicts('./images/' + d))
+      MetadataCatalog.get("food_" + d).set(thing_classes=['baklava','barbunya','cipura','etsote','pilav','karniyarik','pirinc','kurufasulye','manti','menemen','mercimek','nohut','tavuksote','trilece','kart','yaprak','fasulye'])
+    except:
+      MetadataCatalog.get("food_" + d).set(thing_classes=['baklava','barbunya','cipura','etsote','pilav','karniyarik','pirinc','kurufasulye','manti','menemen','mercimek','nohut','tavuksote','trilece','kart','yaprak','fasulye'])
+    finally:
+      MetadataCatalog.get("food_" + d).set(thing_classes=['baklava','barbunya','cipura','etsote','pilav','karniyarik','pirinc','kurufasulye','manti','menemen','mercimek','nohut','tavuksote','trilece','kart','yaprak','fasulye'])
+food_metadata = MetadataCatalog.get("food_train")
+    
+
+import random
+
+# dataset_dicts = get_food_dicts("./images/test/")
+# for d in random.sample(dataset_dicts, 3):
+#     img = cv2.imread(d["file_name"])
+    
+#     v = Visualizer(img[:, :, ::-1], metadata=food_metadata, scale=0.5)
+#     v = v.draw_dataset_dict(d)
+#     plt.figure(figsize = (14, 10))
+#     plt.imshow(cv2.cvtColor(v.get_image()[:, :, ::-1], cv2.COLOR_BGR2RGB))
+#     plt.show()
+
+from detectron2.engine import DefaultTrainer
+from detectron2.config import get_cfg
+
+cfg = get_cfg()
+cfg.MODEL.DEVICE='cpu'
+cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+cfg.DATASETS.TRAIN = ("food_test",)
+cfg.DATASETS.TEST = ()
+cfg.DATALOADER.NUM_WORKERS = 2
+cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
+cfg.SOLVER.IMS_PER_BATCH = 2
+cfg.SOLVER.BASE_LR = 0.00025
+cfg.SOLVER.MAX_ITER = 59999
+cfg.MODEL.ROI_HEADS.NUM_CLASSES = 17
+
+os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
+trainer = DefaultTrainer(cfg) 
+trainer.resume_or_load(resume=False)
+cfg.MODEL.WEIGHTS = os.path.join("./model_0144999.pth") #Your model files path
+print(cfg.MODEL.WEIGHTS)
+cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5 
+cfg.DATASETS.TEST = ("food1_test")
+predictor = DefaultPredictor(cfg)
+
+
+cardarea=46.20688
+
+
+
+#@title Food Image URL { run: "auto" }
+Image_url = "https://i.ibb.co/48mf2rm/Whats-App-Image-2021-02-09-at-19-33-28-1.jpg"
+Image_url = st.text_input("Fotoğraf Linki",Image_url)
+ #@param {type:"string"}
+from detectron2.utils.visualizer import ColorMode
+from detectron2.utils.visualizer import GenericMask
+from PIL import Image
+import numpy as np
+import requests
+from detectron2.structures import masks
+from detectron2.structures.masks import PolygonMasks
+from detectron2.structures import instances
+import matplotlib.pyplot as plt
+
+
+
+
+
+uploaded_file = st.file_uploader("Fotoğraf yükle")
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    image.save("./images/img2.jpg")
+
+
+response = requests.get(Image_url, stream=True)
+img = Image.open(response.raw)
+img.save('./images/img.jpg')
+dataset_dicts = get_food_dicts('./images/test/')
+for d in random.sample(dataset_dicts, 1):
+    if uploaded_file is not None:
+        im = cv2.imread('./images/img2.jpg') 
+    else:
+        im = cv2.imread('./images/img.jpg')
+    outputs = predictor(im)
+    v = Visualizer(im[:, :, ::-1],
+                   metadata=food_metadata, 
+                   scale=0.3, 
+                   instance_mode=ColorMode.IMAGE_BW   # remove the colors of unsegmented pixels
+    )
+
+    boxes = outputs["instances"].pred_boxes if outputs["instances"].has("pred_boxes") else None
+    scores = outputs["instances"].scores if outputs["instances"].has("scores") else None
+    classes = outputs["instances"].pred_classes if outputs["instances"].has("pred_classes") else None
+    siniflar=outputs["instances"].pred_classes
+    maskeler=outputs["instances"].pred_boxes
+    #print(maskeler[1])
+    #print(outputs["instances"])
+    print(len(outputs["instances"]))
+    sinifsayisi=(len(siniflar))
+    #print(sinifsayisi)
+    #i=0
+    #while i < sinifsayisi:
+     # out=i
+      #print(out)
+    
+    v = v.draw_instance_predictions(outputs["instances"].to("cpu"))
+    if outputs["instances"].has("pred_masks"):
+            masks = np.asarray(outputs["instances"].to("cpu").pred_masks)
+            masks = [GenericMask(x, v.height, v.width) for x in masks]
+            areas = np.asarray([x.area() for x in masks])
+    print(areas)
+    print(classes)
+    print(scores)
+    labels=[]
+    class_names = ['baklava','barbunya','cipura','etsote','pilav','karniyarik','pirinc','kurufasulye','manti','menemen','mercimek','nohut','tavuksote','trilece','kart','yaprak','fasulye']
+    labels1 = [class_names[i] for i in classes]
+    j=0;
+    while j < len(classes):
+        if labels1[j] in ["kart"]:
+           x=areas[j]/46.20688
+           #areas[j]=areas[j]/x #bölüm katsayısını hesapladık
+           print(x)
+
+           print(j)
+           j=j+1   
+        else:
+           j=j+1
+    if classes is not None and class_names is not None and len(class_names) > 0:
+        labels = [class_names[i] for i in classes]
+        
+    if scores is not None:
+        if labels is None:
+            labels1 = ["{:.0f}%".format(s * 100) for s in scores]
+        else:
+            labels1 = ["{} {:.0f}% {}".format(l, s * 100, t) for l, s, t in zip(labels, scores,areas/x)]
+    print(labels1)
+    
+    plt.figure(figsize = (14, 10))
+    plt.imshow(cv2.cvtColor(v.get_image()[:, :, ::-1], cv2.COLOR_BGR2RGB))
+    plt.savefig("image.png")
+    plt.show()
+    from PIL import Image
+    image = Image.open("image.png")
+    st.image(image,
+             use_column_width=True)
+    plt.show()
+    plt.close()
+    #print(labels)
+array= [[labels],[scores],[areas]]
+#print(array)
+l=0
+#len(labels)
+while l < len(labels):
+  if array[0][0][l] in ["kart"]:
+    x=(array[2][0][l])/46.20688
+    #print(x)
+    l=l+1
+  else:
+    l=l+1
+
+newareas=areas/x
+array1= [[labels],[scores],[newareas]]
+#print(array1)
+import math
+l=0
+#print(len)
+yaricap = []
+while l < len(labels):
+  if array1[0][0][l] in ['baklava','cipura','etsote','pilav','karniyarik','pirinc','kurufasulye','menemen','mercimek','nohut','tavuksote','trilece','kart','yaprak','fasulye']: #mantı ile barbunya çıkarıldı
+    yemekarea=array1[2][0][l]
+    #print(yemekarea)
+    areadividepi=yemekarea/3.1415
+    #print(areadividepi)
+    radius=math.sqrt(areadividepi)
+    yaricap.append(radius*0.94)
+    #print(radius)
+    l=l+1
+  else:
+    yaricap.append(0)
+    l=l+1
+#print(yaricap)
+
+array2=[[labels],[scores*100],[newareas],[yaricap]]
+#print(array2)
+l=0
+#len(yaricap)
+cap=[]
+while l < len(yaricap):
+  cap.append(yaricap[l]*2)
+  #print(cap[l])
+  l=l+1
+  hacim=[None] * len(cap)
+  #print(hacim)
+  j=0
+
+while j < len(cap):
+  if labels[j] in ["mercimek"]:
+      
+    if cap[j]>10 and cap[j]<=12:
+      print(cap[j])
+      yaricapkase=cap[j]/2
+      pi=math.pi
+      altyaricap=4
+      print(cap[j])
+      hacimkase=((4/3)*pi*pow(yaricapkase,3)-(4/3)*pi*pow(altyaricap,3))/2
+      hacim[j]=hacimkase
+      j=j+1
+    elif cap[j]>12 and cap[j]<=14:
+      print(cap[j])
+      yaricapkase=cap[j]/2
+      pi=math.pi
+      altyaricap=((cap[j]-12)/2)+4.8
+      st.write(altyaricap)
+      print(cap[j])
+      hacimkase=((4/3)*pi*pow(yaricapkase,3)-(4/3)*pi*pow(altyaricap,3))/2
+      hacim[j]=hacimkase
+      j=j+1 
+    elif cap[j]>14 and cap[j]<=16:
+      yaricapkase=cap[j]/2
+      pi=math.pi
+      altyaricap=6+((cap[j]-14)/2)
+      print(cap[j])
+      hacimkase=((4/3)*pi*pow(yaricapkase,3)-(4/3)*pi*pow(altyaricap,3))/2
+      hacim[j]=hacimkase
+      j=j+1  
+    elif cap[j]>16 and cap[j]<=22:
+        print(cap[j])
+        r1=cap[j]/2
+        r2=10/2
+        h1=r1-r2+1.8
+        h1=abs(h1)
+        h=math.sqrt(h1)
+        r2=pow(r2,2)
+        r1=pow(r1,2)
+        h2=pow(h,2)
+        pi=math.pi
+        v=((pi)(h)((3)(r1)+(3)(r2)+(h2)))/6
+        #print(v)
+        hacim[j]=v
+        j=j+1
+    else:
+      j=j+1
+  elif labels[j] in ['baklava','barbunya','etsote','karniyarik','kurufasulye','manti','menemen','nohut','trilece','kart','fasulye']:
+    
+    r1=cap[j]/2
+    r2=10/2
+    h1=r1-r2+(r1-r2)
+    h1=abs(h1)
+    h=math.sqrt(h1)
+    #st.write(h,labels[j])
+    if h>2.45:
+        h=2.45
+    elif h<2.10 and h>1.80:
+        h1=h1/2+1
+        h1=abs(h1)
+        h=math.sqrt(h1)
+    elif h<=1.80:
+        h1=h1/2
+        h1=abs(h1)
+        h=math.sqrt(h1)
+    else:
+        h=h
+    r2=pow(r2,2)
+    r1=pow(r1,2)
+    
+    
+    h2=pow(h,2)
+    pi=math.pi
+    v=((pi)(h)((3)(r1)+(3)(r2)+(h2)))/6
+    
+    print(cap[j])
+    #print(v)
+    hacim[j]=v
+    j=j+1
+  elif labels[j] in ['pilav']:
+    
+    r1=cap[j]/2
+    r2=10/2
+    r3=r1-r2
+    
+    h1=r1-r2+(r1-r2)
+    h1=abs(h1)
+    h=math.sqrt(h1)
+    #st.write(h,labels[j])
+    
+    
+    if h>2.45:
+        h=2.45
+    elif h<2.10:
+        h1=h1/2+1.8
+        h1=abs(h1)
+        h=math.sqrt(h1)
+    else:
+        h=h
+    r2=pow(r2,2)
+    r1=pow(r1,2)
+   
+    h2=pow(h,2)
+    pi=math.pi
+    v=((pi)(h)((3)(r1)+(3)(r2)+(h2)))/6
+    
+    print(cap[j])
+    #print(v)
+    hacim[j]=v
+    j=j+1
+  elif labels[j] in ['yaprak','tavuksote','etsote']:
+    
+    r1=cap[j]/2
+    r2=10/2
+    r3=r1-r2
+    
+    h1=r1-r2+(r1-r2)
+    h1=abs(h1)
+    h=math.sqrt(h1)
+    #st.write(h,labels[j])
+    
+    
+    if h>2.45:
+        h=2.45
+    elif h<2.10:
+        h1=h1/2+1.8
+        h1=abs(h1)
+        h=math.sqrt(h1)
+    else:
+        h=h
+    r2=pow(r2,2)
+    r1=pow(r1,2)
+   
+    h2=pow(h,2)
+    pi=math.pi
+    v=((pi)(h)((3)(r1)+(3)(r2)+(h2)))/6
+    
+    print(cap[j])
+    #print(v)
+    hacim[j]=v*1.3
+    j=j+1
+  elif labels[j] in ["cipura"]:
+    r1=cap[j]/2
+    r2=cap[j]/2
+    r2=pow(r2,2)
+    r1=pow(r1,2)
+    h=1.5
+    h2=pow(h,2)
+    pi=math.pi
+    v=((pi)(h)((3)(r1)+(3)(r2)+(h2)))/6
+    v=v/1.2
+    print(v)
+    hacim[j]=v
+    j=j+1
+  elif labels[j] in ["pirinc"]:
+    if cap[j]<12:
+      pirincr=cap[j]/2
+      hacim[j]=(2/3)math.pi(pow(pirincr,3))
+    else:
+        r1=cap[j]/2
+        r2=10/2
+        h1=r1-r2+1.8
+        h1=abs(h1)
+        h=math.sqrt(h1)
+        r2=pow(r2,2)
+        r1=pow(r1,2)
+       
+        h2=pow(h,2)
+        pi=math.pi
+        v=((pi)(h)((3)(r1)+(3)(r2)+(h2)))/6
+        v=v/1.4
+        print(v)
+        hacim[j]=v
+        j=j+1
+  else:
+    j=j+1
+#print(hacim)  
+yemek_hacim=[[labels],[hacim]]
+#print(yemek_hacim) 
+import xlrd
+dosya='./tabloyemek2.xlsx'
+inputworkbook = xlrd.open_workbook(dosya)
+inputworkshhet=inputworkbook.sheet_by_index(0)
+classes=[]
+gr_bolu_ml=[]
+ch_100ml=[]
+cal_100gr=[]
+ch_100gr=[]
+alan=[]
+gram=[None]*len(labels)
+for x in range(2,inputworkshhet.nrows):
+  classes.append(inputworkshhet.cell_value(x,0))
+  gr_bolu_ml.append(inputworkshhet.cell_value(x,5))
+  ch_100ml.append(inputworkshhet.cell_value(x,4))
+  cal_100gr.append(inputworkshhet.cell_value(x,8))
+  alan.append(inputworkshhet.cell_value(x,10))
+  ch_100gr.append(inputworkshhet.cell_value(x,3))
+# print(classes)
+# print(gr_bolu_ml)
+# print(ch_100ml)
+# print(cal_100gr)
+# print(alan)
+# print(ch_100gr) 
+k=0
+carb=[None]*len(labels)
+while k < len(labels):
+  if labels[k] in ["kart"]:
+    k=k+1
+  elif labels[k] in ["trilece","baklava"]:
+    index=classes.index(labels[k])
+    carb[k]=(newareas[k]*alan[index]*ch_100gr[index])/100
+    gram[k]=newareas[k]*alan[index]
+    k=k+1
+  
+  else:
+    index=classes.index(labels[k])
+   # print(index)
+    carb[k]=hacim[k]*ch_100ml[index]/100
+    gram[k]=gr_bolu_ml[index]*hacim[k]
+    k=k+1
+arrayson=[[labels],[carb],[hacim]]
+i=0
+while i < len(labels):
+  if labels[i]=="kart":
+    
+    i=i+1
+  else:
+      if labels[i] in ['tavuksote', 'pilav','yaprak','pirinc','etsote']:
+        option = st.selectbox('Yemeğiniz nasıl servis ediliyor',('tabaga yayilmis', 'tepeleme'))
+        if option in ['tepeleme']:
+            st.write(labels[i], "yemeği için", hacim[i]*1.3, "mililitrede",gram[i]*1.3,"gramda", carb[i]*1.3, "gr karbonhidrat vardır")
+            i=i+1
+        elif option in ['tabaga yayilmis']:
+            st.write(labels[i], "yemeği için", hacim[i], "mililitrede",gram[i],"gramda", carb[i], "gr karbonhidrat vardır")
+            i=i+1
+        else:
+            i=i+1
+      elif labels[i] in ['trilece','baklava']:
+         st.write(labels[i], "yemeği için", gram[i], "gram için", carb[i], "gr karbonhidrat vardır")
+         i=i+1
+      else:
+        st.write(labels[i], "yemeği için", hacim[i], "mililitrede",gram[i],"gramda", carb[i], "gr karbonhidrat vardır") 
+        i=i+1

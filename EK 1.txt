@@ -1,0 +1,3 @@
+!pip install bing-image-downloader
+from bing_image_downloader import downloader
+downloader.download('yemek ismi', limit=200,  output_dir='../content/drive/My Drive/dataset yemek/', adult_filter_off=True, force_replace=False, timeout=60)

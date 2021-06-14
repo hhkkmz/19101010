@@ -1,0 +1,24 @@
+Image_url = "https://i.ibb.co/48mf2rm/Whats-App-Image-2021-02-09-at-19-33-28-1.jpg" #@param {type:"string"}
+from detectron2.utils.visualizer import ColorMode
+from detectron2.utils.visualizer import GenericMask
+from PIL import Image
+import numpy as np
+import requests
+from detectron2.structures import masks
+from detectron2.structures.masks import PolygonMasks
+from detectron2.structures import instances
+import matplotlib.pyplot as plt
+
+response = requests.get(Image_url, stream=True)
+img = Image.open(response.raw)
+img.save('img.jpg')
+dataset_dicts = get_food_dicts('/content/images/test/')
+for d in random.sample(dataset_dicts, 1):    
+    im = cv2.imread('/content/img.jpg')
+    outputs = predictor(im)
+    v = Visualizer(im[:, :, ::-1],
+                   metadata=food_metadata, 
+                   scale=0.3, 
+                   instance_mode=ColorMode.IMAGE_BW   # remove the colors of unsegmented pixels
+    )
+ 
